@@ -1,0 +1,62 @@
+upstream {NS} {
+	least_conn;
+	{HOSTS}
+}
+ 
+server {
+	listen *:{PORT};
+
+	server_name {URI};
+
+	access_log  /var/log/omneedia/{NS}.access.log;
+	error_log  /var/log/omneedia/{NS}.error.log debug;
+
+	charset utf-8;
+
+	default_type  application/octet-stream;
+	sendfile        on;
+
+	# would be awesome if your mobile-app can utilize keep-alives!
+	keepalive_timeout  65;	  
+
+	# enable gzip
+	gzip on;
+	gzip_comp_level 6;
+	gzip_vary on;
+	gzip_min_length  1000;
+	gzip_proxied any;
+	gzip_buffers 16 8k; 
+
+	# we only gzip these mime-types (since there's no use to gzip jpegs)
+	gzip_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript;
+
+	# Disable logging for favicon
+	location = /favicon.ico {
+		log_not_found off;
+		access_log off;
+	}
+
+	# Disable logging for robots.txt
+	location = /robots.txt {
+		allow all;
+		log_not_found off;
+		access_log off;
+	} 
+
+	location / {
+		proxy_pass http://{NS};
+		proxy_redirect off;
+		proxy_set_header   X-Real-IP  $remote_addr;
+		proxy_set_header   X-Forwarded-For  $proxy_add_x_forwarded_for;
+		proxy_set_header   X-Forwarded-Proto  $scheme;
+		proxy_set_header   Host  $http_host;
+		proxy_set_header   X-NginX-Proxy  true;
+		proxy_http_version 1.1;
+	}
+
+	error_page   500 502 503 504  /50x.html;
+
+	location = /50x.html {
+		root   /var/omneedia/offline/;
+	}
+}

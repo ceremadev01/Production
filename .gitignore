@@ -1,0 +1,13 @@
+!.gitignore
+Workers/tmp
+Workers/packages
+Workers/drones
+Workers/bin/node_modules
+Workers/bin/iojs
+Workers/bin/workers.json
+Cluster/config/access.json
+Cluster/config/cluster.json
+Cluster/config/hosts.json
+Cluster/var
+Cluster/bin/iojs
+Cluster/bin/node_modules

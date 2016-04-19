@@ -1,0 +1,23 @@
+{
+  "name": "bin.omneedia.worker",
+  "version": "1.0.0",
+  "description": "Omneedia Workers",
+  "main": "worker.js",
+  "dependencies": {
+    "watchr": "",
+    "body-parser": "",
+    "express": "",
+    "morgan": "",
+    "wrench": "",
+	"shelljs": "",
+	"cookie-parser": "",
+	"multer": "",
+	"sequelize": ""
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}

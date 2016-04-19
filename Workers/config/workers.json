@@ -1,0 +1,9 @@
+{
+    "cluster": "CLUSTER_HOST",
+    "threads": "*",
+    "worker": {
+        "threads": "*"
+    },
+    "key": "a6b3Efdq",
+    "port": "9090"
+}
