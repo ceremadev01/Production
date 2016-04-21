@@ -62,7 +62,8 @@
 	"md5-file": "",
 	"node-schedule": "",
 	"session-file-store": "",
-    "plist": ""
+    "plist": "",
+	"minimist": ""
   },
   "devDependencies": {},
   "scripts": {

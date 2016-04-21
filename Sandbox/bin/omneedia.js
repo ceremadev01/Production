@@ -4,7 +4,7 @@
  *
  */
 
-$_VERSION = "0.9.7a";
+$_VERSION = "0.9.7b";
 
 CDN = "http://cdn.omneedia.com/"; //PROD
 //CDN = "/cdn"; // DEBUG
@@ -2215,7 +2215,7 @@ copyFileSync = function (srcFile, destFile) {
 
 function make_resources(cb) {
     console.log('  - Updating resources');
-
+    
     if (Manifest.platform == "mobile") {
         if (fs.existsSync(PROJECT_DEV + path.sep + "mobi" + path.sep + "Resources.css")) {
             cb();
@@ -3771,75 +3771,94 @@ function get_mysql_data(db, res, response) {
 
 API = [];
 PROJECT_HOME = process.cwd();
-ROOT = path.dirname(PROJECT_HOME);
-if (!fs.existsSync(PROJECT_HOME + path.sep + "app.manifest")) {
-    if (!fs.existsSync(PROJECT_HOME + path.sep + ".." + path.sep + "app.manifest")) PROJECT_HOME = "-";
-    else PROJECT_HOME = path.normalize(fs.realpathSync(PROJECT_HOME + path.sep + ".." + path.sep));
+
+var parseArgs = require('minimist');
+process.args=parseArgs(process.argv);
+
+if (process.args.sandbox) {
+    if (!process.args.user) {
+        console.log('  ! No user provided'.yellow);
+    };
+    PROJECT_HOME=__dirname+path.sep+".."+path.sep+"var"+path.sep+process.args.user;
+    if (!fs.existsSync(PROJECT_HOME)) fs.mkdirSync(PROJECT_HOME);
+    PROJECT_HOME+=path.sep+process.argv[process.argv.indexOf('get')+1];
+    console.log(PROJECT_HOME);
 };
 
-if (PROJECT_HOME != "-") {
-    PROJECT_WEB = PROJECT_HOME + path.sep + "src";
-    PROJECT_API = PROJECT_WEB + path.sep + "Contents" + path.sep + "Services";
-    PROJECT_DEV = PROJECT_HOME + path.sep + "dev";
-    PROJECT_VAR = PROJECT_HOME + path.sep + "var";
-    PROJECT_SYSTEM = PROJECT_WEB + path.sep + "System";
-    PROJECT_BUILD = PROJECT_HOME + path.sep + "builds";
-    PROJECT_NS = ROOT.split(path.sep)[ROOT.split(path.sep).length - 1];
+ROOT = path.dirname(PROJECT_HOME);
 
-    if (!fs.existsSync(PROJECT_HOME + path.sep + 'dev')) fs.mkdirSync(PROJECT_HOME + path.sep + 'dev');
-    if (!fs.existsSync(PROJECT_HOME + path.sep + 'dev' + path.sep + 'webapp')) fs.mkdirSync(PROJECT_HOME + path.sep + 'dev' + path.sep + 'webapp');
+if (!process.args.sandbox) {
+    if (!fs.existsSync(PROJECT_HOME + path.sep + "app.manifest")) {
+        if (!fs.existsSync(PROJECT_HOME + path.sep + ".." + path.sep + "app.manifest")) PROJECT_HOME = "-";
+        else PROJECT_HOME = path.normalize(fs.realpathSync(PROJECT_HOME + path.sep + ".." + path.sep));
+    };
+};
 
-    // Settings
-    if (fs.existsSync(PROJECT_HOME + path.sep + 'src' + path.sep + 'Contents' + path.sep + 'Settings.js')) {
-        var settings = fs.readFileSync(PROJECT_HOME + path.sep + 'src' + path.sep + 'Contents' + path.sep + 'Settings.js', 'utf-8');
-        eval(settings);
-    }
+if (!process.args.sandbox) { 
+    if (PROJECT_HOME != "-") {
+        PROJECT_WEB = PROJECT_HOME + path.sep + "src";
+        PROJECT_API = PROJECT_WEB + path.sep + "Contents" + path.sep + "Services";
+        PROJECT_DEV = PROJECT_HOME + path.sep + "dev";
+        PROJECT_VAR = PROJECT_HOME + path.sep + "var";
+        PROJECT_SYSTEM = PROJECT_WEB + path.sep + "System";
+        PROJECT_BUILD = PROJECT_HOME + path.sep + "builds";
+        PROJECT_NS = ROOT.split(path.sep)[ROOT.split(path.sep).length - 1];
 
-    // get app.manifest
-    var json = fs.readFileSync(PROJECT_HOME + path.sep + "app.manifest");
-    Manifest = JSON.parse(json);
+        if (!fs.existsSync(PROJECT_HOME + path.sep + 'dev')) fs.mkdirSync(PROJECT_HOME + path.sep + 'dev');
+        if (!fs.existsSync(PROJECT_HOME + path.sep + 'dev' + path.sep + 'webapp')) fs.mkdirSync(PROJECT_HOME + path.sep + 'dev' + path.sep + 'webapp');
 
-    //get args
-    if (process.argv.indexOf("start") > -1) var setmeup = process.argv[process.argv.indexOf("start") + 1];
-    if (process.argv.indexOf("updatedb") > -1) var setmeup = process.argv[process.argv.indexOf("updatedb") + 1];
-    if (process.argv.indexOf("migrationdb") > -1) var setmeup = process.argv[process.argv.indexOf("migrationdb") + 1];
+        // Settings
+        if (fs.existsSync(PROJECT_HOME + path.sep + 'src' + path.sep + 'Contents' + path.sep + 'Settings.js')) {
+            var settings = fs.readFileSync(PROJECT_HOME + path.sep + 'src' + path.sep + 'Contents' + path.sep + 'Settings.js', 'utf-8');
+            eval(settings);
+        }
 
-    PROCESS_CUSTOM = -1;
-    if (process.argv.indexOf('production') > -1) {
-        PROCESS_NATIVE = false;
-        PROCESS_PRODUCTION = true;
-        var p = glob.readdirSyncRecursive(PROJECT_HOME + path.sep + 'etc');
-        for (var z = 0; z < p.length; z++) {
-            try {
-                var cc = p[z].split('settings-')[1].split('.json')[0];
-                if (process.argv.indexOf(cc) > -1) PROCESS_CUSTOM = cc;
-            } catch (e) {
+        // get app.manifest
+        var json = fs.readFileSync(PROJECT_HOME + path.sep + "app.manifest");
+        Manifest = JSON.parse(json);
 
+        //get args
+        if (process.argv.indexOf("start") > -1) var setmeup = process.argv[process.argv.indexOf("start") + 1];
+        if (process.argv.indexOf("updatedb") > -1) var setmeup = process.argv[process.argv.indexOf("updatedb") + 1];
+        if (process.argv.indexOf("migrationdb") > -1) var setmeup = process.argv[process.argv.indexOf("migrationdb") + 1];
+
+        PROCESS_CUSTOM = -1;
+        if (process.argv.indexOf('production') > -1) {
+            PROCESS_NATIVE = false;
+            PROCESS_PRODUCTION = true;
+            var p = glob.readdirSyncRecursive(PROJECT_HOME + path.sep + 'etc');
+            for (var z = 0; z < p.length; z++) {
+                try {
+                    var cc = p[z].split('settings-')[1].split('.json')[0];
+                    if (process.argv.indexOf(cc) > -1) PROCESS_CUSTOM = cc;
+                } catch (e) {
+
+                }
             }
-        }
-    };
+        };
 
-    if (process.argv.indexOf("build") > -1) {
-        setmeup = "prod";
-        if (PROCESS_CUSTOM != -1) setmeup = PROCESS_CUSTOM;
-        if (!fs.existsSync(PROJECT_HOME + path.sep + 'etc' + path.sep + 'settings-' + setmeup + '.json')) {
-            console.log("  ! No settings-prod found. Can't build.".yellow);
-            return;
-        }
-    };
+        if (process.argv.indexOf("build") > -1) {
+            setmeup = "prod";
+            if (PROCESS_CUSTOM != -1) setmeup = PROCESS_CUSTOM;
+            if (!fs.existsSync(PROJECT_HOME + path.sep + 'etc' + path.sep + 'settings-' + setmeup + '.json')) {
+                console.log("  ! No settings-prod found. Can't build.".yellow);
+                return;
+            }
+        };
 
-    if (setmeup) {
-        if (fs.existsSync(PROJECT_HOME + path.sep + 'etc' + path.sep + 'settings-' + setmeup + '.json')) {
-            var _set = fs.readFileSync(PROJECT_HOME + path.sep + 'etc' + path.sep + 'settings-' + setmeup + '.json', 'utf-8');
-            MSettings = JSON.parse(_set);
-        } else console.log(setmeup + ' settings not found');
-    } else {
-        if (fs.existsSync(PROJECT_HOME + path.sep + 'etc' + path.sep + 'settings.json')) {
-            var _set = fs.readFileSync(PROJECT_HOME + path.sep + 'etc' + path.sep + 'settings.json', 'utf-8');
-            MSettings = JSON.parse(_set);
-        }
-    };
+        if (setmeup) {
+            if (fs.existsSync(PROJECT_HOME + path.sep + 'etc' + path.sep + 'settings-' + setmeup + '.json')) {
+                var _set = fs.readFileSync(PROJECT_HOME + path.sep + 'etc' + path.sep + 'settings-' + setmeup + '.json', 'utf-8');
+                MSettings = JSON.parse(_set);
+            } else console.log(setmeup + ' settings not found');
+        } else {
+            if (fs.existsSync(PROJECT_HOME + path.sep + 'etc' + path.sep + 'settings.json')) {
+                var _set = fs.readFileSync(PROJECT_HOME + path.sep + 'etc' + path.sep + 'settings.json', 'utf-8');
+                MSettings = JSON.parse(_set);
+            }
+        };
 
+    };
 };
 
 function update_npm() {
@@ -3997,7 +4016,11 @@ function build_production() {
 
 function do_get() {
     var op = argv[argv.indexOf('get') + 1];
-    console.log('  - Cloning project ' + op);
+    
+    if (process.args.sandbox) {
+		var dir=PROJECT_HOME;
+	} else var dir=op;
+    
     if (fs.existsSync(__dirname + path.sep + '.repositories')) {
         var ff = JSON.parse(fs.readFileSync(__dirname + path.sep + '.repositories', 'utf-8'));
     } else {
@@ -4015,6 +4038,10 @@ function do_get() {
         });
         return;
     };
+    if (process.args.sandbox) {
+        if (fs.existsSync(PROJECT_HOME)) shelljs.exec("rm -Rf "+PROJECT_HOME);   
+    };
+    console.log('  - Cloning project ' + op);
     var url = "";
     for (var i = 0; i < ff.length; i++) {
         if (ff[i].name == op) var url = ff[i].git_url;
@@ -4024,13 +4051,19 @@ function do_get() {
         console.log("   ! " + op + " not found".yellow);
     } else {
 
-        var r = shelljs.exec('git clone ' + url.replace('git://github.com/', 'https://github.com/'), {
+        var r = shelljs.exec('git clone ' + url.replace('git://github.com/', 'https://github.com/')+' '+dir, {
             silent: true
         });
         if (r.output.indexOf('fatal') > -1) {
             console.log('  ! Cloning failed'.yellow);
         } else {
             console.log('  - Updating project');
+            PROJECT_WEB = PROJECT_HOME + path.sep + "src";
+			PROJECT_API = PROJECT_WEB + path.sep + "Contents" + path.sep + "Services";
+			PROJECT_DEV = PROJECT_HOME + path.sep + "dev";
+			PROJECT_VAR = PROJECT_HOME + path.sep + "var";
+			PROJECT_SYSTEM = PROJECT_WEB + path.sep + "System";
+			PROJECT_BUILD = PROJECT_HOME + path.sep + "builds";            
             AppUpdate(op);
         }
     };
@@ -4614,6 +4647,7 @@ function Update_DB(cb) {
 
 function App_Update(nn, cb) {
     console.log('  - Updating project');
+    if (process.args.sandbox) Manifest=JSON.parse(fs.readFileSync(PROJECT_HOME+path.sep+"app.manifest",'utf-8'));
     // reading manifest.json
     var pcwd = process.cwd();
     if (nn == "-") pcwd += path.sep + argv[p + 1];
@@ -4873,15 +4907,21 @@ function App_Update(nn, cb) {
 
         if (Manifest.db) {
             try {
+                var def_uri="mysql://root@127.0.0.1/";
+			    if (process.args.sandbox) {
+				    var jsoconf=JSON.parse(fs.readFileSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'sandbox.json'));
+				    def_uri="mysql://"+jsoconf.mysql+"/"+PACKAGE_NAME.replace(/\./g,'_')+'_';
+			    };                
                 for (var i = 0; i < Manifest.db.length; i++) {
                     var _temoin = -1;
                     for (var j = 0; j < _settings.db.length; j++) {
                         if (_settings.db[j].name == Manifest.db[i]) _temoin = 1;
                     };
                     if (_temoin == -1) {
+                        var str3=def_uri + Manifest.db[i].replace(/\./g,'_');
                         _settings.db.push({
                             name: Manifest.db[i]
-                            , uri: "mysql://root@127.0.0.1/" + Manifest.db[i]
+                            , uri: str3
                         });
                     }
                 }
@@ -4918,6 +4958,7 @@ function App_Update(nn, cb) {
 
         update_npm();
         process.chdir(PROJECT_HOME);
+        if (process.args.sandbox) return;
         if (!fs.existsSync(PROJECT_HOME + path.sep + '.git')) {
             console.log('  - Init local repository');
             shelljs.exec('git init', {
@@ -5433,6 +5474,9 @@ figlet(' omneedia', {
                         if (uri.indexOf("#")>-1) socket.emit("#send",JSON.stringify(o));
                     }					
 				};
+                x.getFile = function(filename,cb) {
+                    if (fs.existsSync(filename)) cb(filename); else cb(false);
+                };
                 x.using = function (unit) {
                     if (fs.existsSync(__dirname + path.sep + 'node_modules' + path.sep + unit))
                         return require(__dirname + path.sep + 'node_modules' + path.sep + unit);
