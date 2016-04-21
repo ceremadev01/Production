@@ -1,0 +1,5 @@
+{
+	"mysql": "root@127.0.0.1",
+	"prefix": "sandbox.*",
+	"cluster_host": "xxx.xxx.xxx.xxx:xxxx"
+}

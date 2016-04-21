@@ -24,6 +24,21 @@ Array.prototype.diff = function (a) {
     });
 };
 
+function freeport(cb) {
+    var net = require('net');
+    var server = net.createServer()
+        , port = 0
+    server.on('listening', function () {
+        port = server.address().port
+        server.close()
+    });
+    server.on('close', function () {
+        cb(null, port)
+    });
+    server.listen(0);
+};
+
+
 Math.uuid = function () {
     var CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
     var chars = CHARS
@@ -3781,8 +3796,37 @@ if (process.args.sandbox) {
     };
     PROJECT_HOME=__dirname+path.sep+".."+path.sep+"var"+path.sep+process.args.user;
     if (!fs.existsSync(PROJECT_HOME)) fs.mkdirSync(PROJECT_HOME);
-    PROJECT_HOME+=path.sep+process.argv[process.argv.indexOf('get')+1];
-    console.log(PROJECT_HOME);
+    if (process.argv.indexOf('get')>-1) PROJECT_HOME+=path.sep+process.argv[process.argv.indexOf('get')+1];
+	if (process.argv.indexOf('start')>-1) {
+		PROJECT_HOME+=path.sep+process.args.app;
+		ROOT = path.dirname(PROJECT_HOME);
+        PROJECT_WEB = PROJECT_HOME + path.sep + "src";
+        PROJECT_API = PROJECT_WEB + path.sep + "Contents" + path.sep + "Services";
+        PROJECT_DEV = PROJECT_HOME + path.sep + "dev";
+        PROJECT_VAR = PROJECT_HOME + path.sep + "var";
+        PROJECT_SYSTEM = PROJECT_WEB + path.sep + "System";
+        PROJECT_BUILD = PROJECT_HOME + path.sep + "builds";
+        PROJECT_NS = ROOT.split(path.sep)[ROOT.split(path.sep).length - 1];
+
+        if (!fs.existsSync(PROJECT_HOME + path.sep + 'dev')) fs.mkdirSync(PROJECT_HOME + path.sep + 'dev');
+        if (!fs.existsSync(PROJECT_HOME + path.sep + 'dev' + path.sep + 'webapp')) fs.mkdirSync(PROJECT_HOME + path.sep + 'dev' + path.sep + 'webapp');
+
+        // Settings
+        if (fs.existsSync(PROJECT_HOME + path.sep + 'src' + path.sep + 'Contents' + path.sep + 'Settings.js')) {
+            var settings = fs.readFileSync(PROJECT_HOME + path.sep + 'src' + path.sep + 'Contents' + path.sep + 'Settings.js', 'utf-8');
+            eval(settings);
+        }
+
+        // get app.manifest
+        var json = fs.readFileSync(PROJECT_HOME + path.sep + "app.manifest");
+        Manifest = JSON.parse(json);
+
+        //get args
+
+        PROCESS_CUSTOM = -1;
+		
+	}
+
 };
 
 ROOT = path.dirname(PROJECT_HOME);
@@ -3875,6 +3919,9 @@ function update_npm() {
             for (var i = 0; i < list.length; i++) {
                 if (!fs.existsSync(PROJECT_HOME + path.sep + 'bin' + path.sep + 'node_modules' + path.sep + list[i])) {
                     console.log('    - Downloading ' + list[i]);
+					if (process.args.sandbox)
+					shelljs.exec(__dirname+path.sep+'nodejs'+path.sep+'bin'+path.sep+'npm install');
+					else
                     shelljs.exec('npm install');
                     console.log('      Done.');
                 };
@@ -4057,7 +4104,7 @@ function do_get() {
         if (r.output.indexOf('fatal') > -1) {
             console.log('  ! Cloning failed'.yellow);
         } else {
-            console.log('  - Updating project');
+            //console.log('  - Updating project');
             PROJECT_WEB = PROJECT_HOME + path.sep + "src";
 			PROJECT_API = PROJECT_WEB + path.sep + "Contents" + path.sep + "Services";
 			PROJECT_DEV = PROJECT_HOME + path.sep + "dev";
@@ -4301,13 +4348,25 @@ function AppUpdate(zzz) {
             };
         };
 
-        if (is_new > 0) {
-            var str = '    Checking databases';
+        if (process.args.sandbox) {
             console.log(str);
             // Change detected !!!
             var DBA = Manifest.db;
+			var PACKAGE_NAME=process.argv[process.argv.indexOf('get')+1];
+			var jsoconf=JSON.parse(fs.readFileSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'sandbox.json'));
+			var host=jsoconf.mysql.split('@')[1].split(':')[0];
+			var port=3306;
+			if (jsoconf.mysql.split('@')[1].split(':').length>1) port=jsoconf.mysql.split('@')[1].split(':')[1];
+			var user='-u '+jsoconf.mysql.split('@')[0].split(':')[0];
+			var password="";
+			if (jsoconf.mysql.split('@')[0].split(':').length>1) password=' -p"'+jsoconf.mysql.split('@')[0].split(':')[1]+'"';
+
+			for (var i=0;i<DBA.length;i++) {
+				DBA[i]=process.args.user+'_'+PACKAGE_NAME+'_'+DBA[i];
+				DBA[i]=DBA[i].replace(/\./g,'_');
+			};
             for (var i = 0; i < DBA.length; i++) {
-                var o = shelljs.exec('mysql -u root -h 127.0.0.1 -P 3306 -e "use ' + DBA[i] + '"', {
+                var o = shelljs.exec('mysql '+user+password+' -h '+host+' -P '+port+' -e "use ' + DBA[i] + '"', {
                     silent: true
                 });
                 if (o.output.indexOf('denied') > -1) {
@@ -4315,32 +4374,27 @@ function AppUpdate(zzz) {
                     console.log(str.yellow);
                     return;
                 };
-                if (o.output.indexOf('1049') > -1) {
+                if (o.output.indexOf('Unknown') > -1) {
                     var str = '    - Creating database [' + DBA[i] + ']';
                     console.log(str);
-                    shelljs.exec('mysql -u root -h 127.0.0.1 -P 3306 -e "CREATE DATABASE ' + DBA[i] + '"', {
+                    shelljs.exec('mysql '+user+password+' -h '+host+' -P '+port+' -e "CREATE DATABASE ' + DBA[i] + '"', {
                         silent: true
                     });
-                    console.log('      Done.');
-                }
-                var fileme = PROJECT_HOME + require('path').sep + 'db' + require('path').sep + DBA[i] + '.scheme.sql';
-                var o = shelljs.exec('mysqldiff "jdbc:mysql://127.0.0.1:3306/' + DBA[i] + '?user=root" "' + PROJECT_HOME + require('path').sep + 'db' + require('path').sep + DBA[i] + '.scheme.sql' + '"', {
-                    silent: true
-                });
-                if (o.output != "") {
-                    var str = '    - Updating database [' + DBA[i] + ']';
-                    console.log(str);
-                    var err = shelljs.exec('mysql -u root -h 127.0.0.1 -P 3306 -e "USE ' + DBA[i] + ';' + o.output.split('\n').join('') + '"', {
+                } else {
+                    var str = '    - Creating database [' + DBA[i] + ']';
+					console.log(str);
+                    shelljs.exec('mysql '+user+password+' -h '+host+' -P '+port+' -e "DROP DATABASE ' + DBA[i] + '"', {
                         silent: true
                     });
-                    //console.log(err);
-                    console.log('      Done.');
-                }
-                x[DBA[i]] = y[DBA[i]];
-            };
-            fs.writeFileSync(PROJECT_HOME + require('path').sep + 'etc' + require('path').sep + 'db.json', JSON.stringify(x));
-        };
-        //console.log('\n');
+                    shelljs.exec('mysql '+user+password+' -h '+host+' -P '+port+' -e "CREATE DATABASE ' + DBA[i] + '"', {
+                        silent: true
+                    });
+				};
+				
+			};
+			App_Model_Db();
+			return;
+		};
 
         var md5 = require('md5-file');
         console.log('  - Checking remote project');
@@ -4519,38 +4573,53 @@ function AppUpdate(zzz) {
                 } else console.log("\n  ! There is no github url in manifest".yellow);
             } else {
                 if (process.argv.indexOf("--force") > -1) {
-                    console.log('    -> Updating project');
-                    //Update_DB();
-                    shelljs.exec('git config --global core.autocrlf false', {
-                        silent: true
-                    });
-                    shelljs.exec('git add --all', {
-                        silent: true
-                    });
-                    var x = shelljs.exec('git log', {
-                        silent: true
-                    }).output;
-                    shelljs.exec('git commit -m "Update# ' + x.split('commit ').length + '"', {
-                        silent: true
-                    });
-                    if (Manifest.git != "") {
-                        process.chdir(PROJECT_HOME);
-                        var text = shelljs.exec('git remote', {
-                            silent: true
-                        });
-                        if (text.output.indexOf('origin') == -1) {
-                            console.log('       - Adding remote origin');
-                            shelljs.exec('git remote add origin ' + Manifest.git, {
-                                silent: true
-                            });
-                        };
-                        shelljs.exec('git push -f -u origin master', {
-                            silent: true
-                        });
-                        console.log('    Done.');
-                    } else console.log("\n  ! There is no github url in manifest".yellow);
+					if (process.argv[process.argv.indexOf("--force")+1]=="remote") {
+						console.log('    -> Updating project');
+						//Update_DB();
+						shelljs.exec('git config --global core.autocrlf false', {
+							silent: true
+						});
+						shelljs.exec('git add --all', {
+							silent: true
+						});
+						var x = shelljs.exec('git log', {
+							silent: true
+						}).output;
+						shelljs.exec('git commit -m "Update# ' + x.split('commit ').length + '"', {
+							silent: true
+						});
+						if (Manifest.git != "") {
+							process.chdir(PROJECT_HOME);
+							var text = shelljs.exec('git remote', {
+								silent: true
+							});
+							if (text.output.indexOf('origin') == -1) {
+								console.log('       - Adding remote origin');
+								shelljs.exec('git remote add origin ' + Manifest.git, {
+									silent: true
+								});
+							};
+							shelljs.exec('git push -f -u origin master', {
+								silent: true
+							});
+							console.log('    Done.');
+						} else console.log("\n  ! There is no github url in manifest".yellow);
+						return;
+					};
+					if (process.argv[process.argv.indexOf("--force")+1]=="local") {
+						console.log('    <- Updating project');
+						shelljs.exec('git fetch --all', {
+							silent: true
+						});					
+						shelljs.exec('git reset --hard origin/master', {
+							silent: true
+						});				
+						console.log('    Done.');
+						return;
+					};
+					console.log("  --force must be followed by local or remote".yellow);
                 } else {
-                    console.log("  Can't update repository... \n  Try to use --force to force updating remote repository".yellow);
+                    console.log("  Can't update repository... \n  Try to use --force remote to force updating remote repository or --force local to force updating local repository".yellow);
                 }
             }
         };
@@ -4910,7 +4979,7 @@ function App_Update(nn, cb) {
                 var def_uri="mysql://root@127.0.0.1/";
 			    if (process.args.sandbox) {
 				    var jsoconf=JSON.parse(fs.readFileSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'sandbox.json'));
-				    def_uri="mysql://"+jsoconf.mysql+"/"+PACKAGE_NAME.replace(/\./g,'_')+'_';
+				    def_uri="mysql://"+jsoconf.mysql+"/"+process.args.user+'_'+PACKAGE_NAME.replace(/\./g,'_')+'_';
 			    };                
                 for (var i = 0; i < Manifest.db.length; i++) {
                     var _temoin = -1;
@@ -4958,46 +5027,47 @@ function App_Update(nn, cb) {
 
         update_npm();
         process.chdir(PROJECT_HOME);
-        if (process.args.sandbox) return;
-        if (!fs.existsSync(PROJECT_HOME + path.sep + '.git')) {
-            console.log('  - Init local repository');
-            shelljs.exec('git init', {
-                silent: true
-            });
-            console.log('  - First commit');
-            shelljs.exec('git config --global core.autocrlf false', {
-                silent: true
-            });
-            //shelljs.exec('git config --global --unset credential.helper');
-            shelljs.exec('git config --global credential.helper', {
-                silent: true
-            });
-            shelljs.exec('git add --all', {
-                silent: true
-            });
-            shelljs.exec('git commit -m "First commit"', {
-                silent: true
-            });
+        if (!process.args.sandbox) {
+			if (!fs.existsSync(PROJECT_HOME + path.sep + '.git')) {
+				console.log('  - Init local repository');
+				shelljs.exec('git init', {
+					silent: true
+				});
+				console.log('  - First commit');
+				shelljs.exec('git config --global core.autocrlf false', {
+					silent: true
+				});
+				//shelljs.exec('git config --global --unset credential.helper');
+				shelljs.exec('git config --global credential.helper', {
+					silent: true
+				});
+				shelljs.exec('git add --all', {
+					silent: true
+				});
+				shelljs.exec('git commit -m "First commit"', {
+					silent: true
+				});
 
-        } else {
-            if (nn != '-') {
-                console.log('  - Updating local repository');
-                shelljs.exec('git config --global core.autocrlf false', {
-                    silent: true
-                });
-                shelljs.exec('git add --all', {
-                    silent: true
-                });
-                //shelljs.exec('git status');
-                var x = shelljs.exec('git log', {
-                    silent: true
-                }).output;
+			} else {
+				if (nn != '-') {
+					console.log('  - Updating local repository');
+					shelljs.exec('git config --global core.autocrlf false', {
+						silent: true
+					});
+					shelljs.exec('git add --all', {
+						silent: true
+					});
+					//shelljs.exec('git status');
+					var x = shelljs.exec('git log', {
+						silent: true
+					}).output;
 
-                shelljs.exec('git commit -m "Update# ' + x.split('commit ').length + '"', {
-                    silent: true
-                });
-            }
-        };
+					shelljs.exec('git commit -m "Update# ' + x.split('commit ').length + '"', {
+						silent: true
+					});
+				}
+			};
+		};
         console.log('    Done.');
         console.log('');
         if (cb) cb();
@@ -5079,9 +5149,12 @@ figlet(' omneedia', {
         download_repos(lst, 0, [], function (r) {
             fs.writeFileSync(__dirname + path.sep + '.repositories', JSON.stringify(r, null, 4));
             process.chdir(__dirname + path.sep + '..');
-            shelljs.exec('git pull origin master', {
-                silent: true
-            });
+			shelljs.exec('git fetch --all', {
+				silent: true
+			});					
+			shelljs.exec('git reset --hard origin/master', {
+				silent: true
+			});				
             console.log('  Done.');
         });
         return;
@@ -5264,21 +5337,6 @@ figlet(' omneedia', {
         }
     };
 
-    /*	if (argv.indexOf('db')>-1)D
-    	{
-    		if (argv.indexOf('update')>-1) {
-    			App_Model_Db();
-    			return;
-    		};
-    		if (argv.indexOf('import')>-1)
-    		{
-    			App_Migration_Db();
-    			return;
-    		};
-    		return;		
-    	};
-    */
-
     if (argv.indexOf('update') > -1) AppUpdate();
 
     if (argv.indexOf('clean') > -1) {
@@ -5430,26 +5488,6 @@ figlet(' omneedia', {
             else {
                 var x = require(PROJECT_WEB + path.sep + "Contents" + path.sep + "Services" + path.sep + api.action + ".js");
                 x.temp = function (ext) {
-                    Math.uuid = function () {
-                        var CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
-                        var chars = CHARS
-                            , uuid = new Array(36)
-                            , rnd = 0
-                            , r;
-                        for (var i = 0; i < 36; i++) {
-                            if (i == 8 || i == 13 || i == 18 || i == 23) {
-                                uuid[i] = '-';
-                            } else if (i == 14) {
-                                uuid[i] = '4';
-                            } else {
-                                if (rnd <= 0x02) rnd = 0x2000000 + (Math.random() * 0x1000000) | 0;
-                                r = rnd & 0xf;
-                                rnd = rnd >> 4;
-                                uuid[i] = chars[(i == 19) ? (r & 0x3) | 0x8 : r];
-                            }
-                        }
-                        return uuid.join('');
-                    };
                     var uid = Math.uuid();
                     var dir = PROJECT_HOME + path.sep + "tmp" + path.sep;
                     if (!fs.existsSync(dir)) fs.mkdirSync(dir);
@@ -5552,7 +5590,7 @@ figlet(' omneedia', {
     };
 
     if (argv.indexOf('start') > -1) {
-
+			
         if (setmeup) console.log("  + switch to settings [" + setmeup + "]\n");
 
         var app = express();
@@ -5616,26 +5654,33 @@ figlet(' omneedia', {
             
         });
 
-        /*console.log = (function () {
-            var log = console.log;
-            return function (log) {
-                app.IO.sockets.emit('log', log);
-            }
-        })(console);
+		if (fs.existsSync(PROJECT_HOME + path.sep + 'etc' + path.sep + 'settings.json')) {
+			var _set = fs.readFileSync(PROJECT_HOME + path.sep + 'etc' + path.sep + 'settings.json', 'utf-8');
+			MSettings = JSON.parse(_set);
+		};
+		
+		if (!process.args.sandbox) {
+			console.log = (function () {
+				var log = console.log;
+				return function (log) {
+					app.IO.sockets.emit('log', log);
+				}
+			})(console);
 
-        console.info = function () {
-            app.IO.sockets.emit('info', str);
-        };
-        console.warn = function () {
-            app.IO.sockets.emit('warn', str);
-        };
-        console.error = function () {
-            app.IO.sockets.emit('error', str);
-        };
-        console.debug = function () {
-            app.IO.sockets.emit('debug', str);
-        };
-*/
+			console.info = function () {
+				app.IO.sockets.emit('info', str);
+			};
+			console.warn = function () {
+				app.IO.sockets.emit('warn', str);
+			};
+			console.error = function () {
+				app.IO.sockets.emit('error', str);
+			};
+			console.debug = function () {
+				app.IO.sockets.emit('debug', str);
+			};
+		};
+
         /*
         setup_settings
         */
@@ -5653,11 +5698,11 @@ figlet(' omneedia', {
 		
 		var multer = require('multer');
 		
-		if (!fs.existsSync(__dirname + require('path').sep + 'uploads')) fs.mkdirSync(__dirname + require('path').sep + 'uploads');
+		if (!fs.existsSync(PROJECT_HOME+ path.sep +'bin'+ path.sep + 'uploads')) fs.mkdirSync(PROJECT_HOME+ path.sep +'bin'+ path.sep + 'uploads');
 		
 		var storage = multer.diskStorage({
 			destination: function (req, file, cb) {
-				cb(null, __dirname + require('path').sep + 'uploads')
+				cb(null, PROJECT_HOME+ path.sep +'bin'+ path.sep + 'uploads')
 			},
 			filename: function(req,file,cb) {
 				cb(null,Math.uuid()+file.originalname.substr(file.originalname.lastIndexOf('.'),file.originalname.length));
@@ -6284,7 +6329,7 @@ figlet(' omneedia', {
 
 
         // update !!!
-
+		
         App_Update('', function () {
 
             if (fs.existsSync(PROJECT_SYSTEM + path.sep + "app.js")) {
@@ -6349,10 +6394,10 @@ figlet(' omneedia', {
                         function checksum(str) {
                             return require('crypto').createHash('md5').update(str, 'utf8').digest('hex');
                         };
-                        return checksum(__dirname + require('path').sep + 'uploads' + require('path').sep + filename);
+                        return checksum(PROJECT_HOME+ path.sep +'bin'+ path.sep + 'uploads'+ require('path').sep + filename);
                     }
                     , getFilePath: function (filename) {
-                        return __dirname + require('path').sep + 'uploads' + require('path').sep + filename;
+                        return PROJECT_HOME+ path.sep +'bin'+ path.sep + 'uploads' + require('path').sep + filename;
                     }
                     , toBase64: function (filename) {
                         if (!filename) return "";
@@ -6365,7 +6410,7 @@ figlet(' omneedia', {
                             return "";
                         }
                     }
-                    , dir: __dirname + require('path').sep + 'uploads'
+                    , dir: PROJECT_HOME+ path.sep +'bin'+ path.sep + 'uploads'
                 };
                 /*
         subscribe: function(uri) {
@@ -6377,6 +6422,7 @@ figlet(' omneedia', {
 		on: function(uri,cb) {
 			document.socket.on(uri,cb);
 		}        */ 
+				
                 _App.IO = {
                     send: function(uri,data,users) {
                         var o={
@@ -6484,7 +6530,49 @@ figlet(' omneedia', {
                 _App.init(app, express);
             };
 
-            http.listen(Manifest.server.port);
+            if (process.args.sandbox) {
+				
+				freeport(function (err, ip) {
+					Manifest.server.port=ip;
+					/*
+					console.log("Connecting to cluster " + 'http://' + cluster_host + ':' + cluster_port);
+					var socket = require('socket.io-client')('http://' + cluster_host + ':' + cluster_port);
+					socket.on('disconnect', function () {
+						console.log("Loosing cluster...");
+					});
+					socket.on('connect', function () {
+						console.log('Cluster Connected');
+						console.log('Listening to port ' + Manifest.server.port);
+						// register port with cluster
+						var wrench = require('wrench');
+						wrench.mkdirSyncRecursive(__dirname + path.sep + ".." + path.sep + ".." + path.sep + "var" + path.sep + "pids" + path.sep + NS, 0777);
+						console.log("Worker thread " + NS + " started at " + getIPAddress() + ":" + Manifest.server.port + " - pid: " + process.pid + "\n");
+
+						//http.listen(port);
+						fs.writeFileSync(__dirname + path.sep + ".." + path.sep + ".." + path.sep + "var" + path.sep + "pids" + path.sep + NS + path.sep + process.pid + ".pid", Manifest.server.port);
+						console.log('registering drone...');
+						// update cluster
+						socket.emit('ONLINE', {
+							drone: Manifest.namespace
+							, host: getIPAddress()
+							, port: Manifest.server.port
+							, pid: process.pid
+							, uri: registry.uri
+						});
+						socket.on('REGISTER', function () {
+							console.log('registered.');
+						});
+					});
+					*/
+					http.listen(Manifest.server.port);
+					console.log('  - Drone started in debug mode at http://' + getIPAddress() + ':' + Manifest.server.port + '');
+					console.log('');
+					if (!fs.existsSync(__dirname+path.sep+'..'+path.sep+'pids')) fs.mkdirSync(__dirname+path.sep+'..'+path.sep+'pids');
+					fs.writeFileSync(__dirname+path.sep+'..'+path.sep+'pids'+path.sep+process.args.user+'.'+process.args.app+'.inf',Manifest.server.port+':'+process.pid);
+				});
+				return;
+				
+			};
 
             if (Manifest.platform == "mobile") {
                 //console.log('  - Debug service started at http://'+getIPAddress()+':'+Manifest.debug.port+'/client');
