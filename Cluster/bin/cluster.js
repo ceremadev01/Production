@@ -48,7 +48,7 @@ if (!fs.existsSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'cluster.j
 		"port"  	: 	"9191",
 		"key" 		: 	"a6b3Efdq",
 		"threads"	:	"1",
-		"sites"		:	[]
+		"session"	: 	"mongodb://127.0.0.1/session"
 	};
 	fs.writeFileSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'cluster.json',JSON.stringify(cmd,null,4));
 	check_env=1;
@@ -317,7 +317,6 @@ if (cluster.isMaster) {
 
 	var multer=require('multer');
 	
-<<<<<<< HEAD
     var storage = multer.diskStorage({
       destination: function (req, file, cb) {
         cb(null, __dirname+require('path').sep+'..'+require('path').sep+'var'+require('path').sep+'packages')
@@ -326,26 +325,6 @@ if (cluster.isMaster) {
         cb(null, file.originalname)
       }
     })
-=======
-	app.use(multer({ 
-		dest: __dirname+require('path').sep+'..'+require('path').sep+'var'+require('path').sep+'packages',
-		rename: function (fieldname, filename) {
-			//return filename+Date.now();
-			return filename;
-		},
-		onFileUploadStart: function (file) {
-			console.log(file.originalname + ' is starting ...')
-		},
-		onFileUploadComplete: function (file) {
-			console.log(file.fieldname + ' uploaded to  ' + file.path);
-			var servers=JSON.parse(require('fs').readFileSync(__dirname+path.sep+".."+path.sep+"config"+path.sep+"hosts.json",'utf-8'));
-			doUploadPackage(file.path,servers,0,function() {
-				done=true;
-				console.log('Done.');
-			});			
-		}
-	}));
->>>>>>> parent of 9fd6b30... ALPHA-RELEASE
 
     var UPLOAD = multer({ storage: storage })    
     
@@ -404,18 +383,18 @@ if (cluster.isMaster) {
 				"version" : "1.0.0",
 				"engine"  : "cluster"
 			},
-			"drone" : req.param('drone'),
+			"drone" : req.query.drone,
 			"workers" : [],
 			"worker" : {}
 		};
-		if (fs.existsSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+req.param('drone')))
+		if (fs.existsSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+req.query.drone))
 		{
-			var glob=wrench.readdirSyncRecursive(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+req.param('drone'));
+			var glob=wrench.readdirSyncRecursive(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+req.query.drone);
 			for (var i=0;i<glob.length;i++)
 			{
 				var unit=glob[i].split(path.sep);
 				if (unit.length>1) {
-					var port=fs.readFileSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+req.param('drone')+path.sep+glob[i],'utf-8');
+					var port=fs.readFileSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+req.query.drone+path.sep+glob[i],'utf-8');
 					if (response.workers.indexOf(unit[0])==-1) response.workers.push(unit[0]);
 					if (!response.worker[unit[0]]) response.worker[unit[0]]= [];
 					if (response.worker[unit[0]].indexOf(port)==-1) response.worker[unit[0]].push(port);
@@ -468,10 +447,10 @@ if (cluster.isMaster) {
 	});
 	app.delete('/api',function(req,res) {
 		var pid=__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry";
-		if (!fs.existsSync(pid+path.sep+req.param('drone'))) fs.mkdirSync(pid+path.sep+req.param('drone')); 
-		pid=pid+path.sep+req.param('drone');
-		if (!fs.existsSync(pid+path.sep+req.param('host'))) fs.mkdirSync(pid+path.sep+req.param('host')); 
-		pid=pid+path.sep+req.param('host')+path.sep+req.param('pid')+".pid";		
+		if (!fs.existsSync(pid+path.sep+req.query.drone)) fs.mkdirSync(pid+path.sep+req.query.drone); 
+		pid=pid+path.sep+req.query.drone;
+		if (!fs.existsSync(pid+path.sep+req.query.host)) fs.mkdirSync(pid+path.sep+req.query.host); 
+		pid=pid+path.sep+req.query.host+path.sep+req.query.pid+".pid";		
 		if (fs.existsSync(pid)) {
 			fs.unlink(pid);
 			res.end('done.');
@@ -481,35 +460,31 @@ if (cluster.isMaster) {
 			console.log(pid+' pid not found');
 		}
 	});
-<<<<<<< HEAD
-	/*app.post('/api',UPLOAD.single(),function(req,res,next) {
+	app.post('/api',UPLOAD.single(),function(req,res,next) {
 		console.log(req.body);
-=======
-	app.post('/api',function(req,res) {
->>>>>>> parent of 9fd6b30... ALPHA-RELEASE
 		console.log("*------>API");
 		var pid=__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry";
 		var fs=require('fs');
-		if (!fs.existsSync(pid+path.sep+req.param('drone'))) fs.mkdirSync(pid+path.sep+req.param('drone')); 
-		pid=pid+path.sep+req.param('drone');
-		if (!fs.existsSync(pid+path.sep+req.param('host'))) fs.mkdirSync(pid+path.sep+req.param('host')); 
-		pid=pid+path.sep+req.param('host');
-		fs.writeFileSync(pid+path.sep+req.param('pid')+".pid",req.param('port'));
+		if (!fs.existsSync(pid+path.sep+req.body.drone)) fs.mkdirSync(pid+path.sep+req.body.drone); 
+		pid=pid+path.sep+req.body.drone;
+		if (!fs.existsSync(pid+path.sep+req.body.host)) fs.mkdirSync(pid+path.sep+req.body.host); 
+		pid=pid+path.sep+req.body.host;
+		fs.writeFileSync(pid+path.sep+req.body.pid+".pid",req.body.port);
 		
 		// add nginx config
 		var response={
-			"drone" : req.param('drone'),
+			"drone" : req.body.drone,
 			"workers" : [],
 			"worker" : {}
 		};
-		if (fs.existsSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+req.param('drone')))
+		if (fs.existsSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+req.body.drone))
 		{
-			var glob=wrench.readdirSyncRecursive(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+req.param('drone'));
+			var glob=wrench.readdirSyncRecursive(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+req.body.drone);
 			for (var i=0;i<glob.length;i++)
 			{
 				var unit=glob[i].split(path.sep);
 				if (unit.length>1) {
-					var port=fs.readFileSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+req.param('drone')+path.sep+glob[i],'utf-8');
+					var port=fs.readFileSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+req.body.drone+path.sep+glob[i],'utf-8');
 					if (response.workers.indexOf(unit[0])==-1) response.workers.push(unit[0]);
 					if (!response.worker[unit[0]]) response.worker[unit[0]]= [];
 					if (response.worker[unit[0]].indexOf(port)==-1) response.worker[unit[0]].push(port);
@@ -528,18 +503,17 @@ if (cluster.isMaster) {
 			};
 			hosts=hosts.join('\n\t');
 			tpl=tpl.replace(/{HOSTS}/g,hosts);
-			tpl=tpl.replace(/{URI}/g,req.param('uri'));
-			tpl=tpl.replace(/{NS}/g,req.param('drone'));
+			tpl=tpl.replace(/{URI}/g,req.body.uri);
+			tpl=tpl.replace(/{NS}/g,req.body.drone);
 			tpl=tpl.replace(/{PORT}/g,80);
-			fs.writeFileSync('/etc/nginx/sites-enabled/'+path.sep+req.param('drone')+'.conf',tpl);
+			fs.writeFileSync('/etc/nginx/sites-enabled/'+path.sep+req.body.drone+'.conf',tpl);
 			shelljs.exec("service nginx reload");
 			res.end('done.');
 		} else {
 			console.log('  ! nginx template not found');
 			return;
 		}
-	});*/
-	
+	});
     process.on('message', function(message, connection) {
         if (message !== 'sticky-session:connection') {
             return;
