@@ -121,7 +121,6 @@ var allowCrossDomain = function(req, res, next) {
 
 function unregister_drone(sid,cb) {
     if (fs.existsSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+"sid.inf"))
-
      SOCKETS=JSON.parse(fs.readFileSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+"sid.inf","utf-8"));
         else SOCKETS={};   
     if (SOCKETS[sid]) {
@@ -129,7 +128,49 @@ function unregister_drone(sid,cb) {
         var dir=__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep;
         if (fs.existsSync(dir+data.drone+path.sep+data.host+path.sep+data.pid+'.pid')) fs.unlinkSync(dir+data.drone+path.sep+data.host+path.sep+data.pid+'.pid');
         delete SOCKETS[sid];
-        fs.writeFileSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+"sid.inf",JSON.stringify(SOCKETS,null,4));      
+        fs.writeFileSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+"sid.inf",JSON.stringify(SOCKETS,null,4));  
+		
+		// add nginx config
+		var response={
+			"drone" : data.drone,
+			"workers" : [],
+			"worker" : {}
+		};
+		for (var el in SOCKETS) {
+			if (SOCKETS[el].drone==data.drone) {
+					response.workers.push(SOCKETS[el].host);
+					if (!response.worker[SOCKETS[el].host]) response.worker[SOCKETS[el].host]=[];
+					response.worker=SOCKETS[el].port;
+			}
+		};
+		if (fs.existsSync(__dirname+path.sep+".."+path.sep+"config"+path.sep+"nginx.template")) {
+			var tpl=fs.readFileSync(__dirname+path.sep+".."+path.sep+"config"+path.sep+"nginx.template",'utf-8');
+			var hosts=[];
+			for (var i=0;i<response.workers.length;i++) {
+				var work=response.worker[response.workers[i]];
+				for (var j=0;j<work.length;j++) {
+					hosts.push('server '+response.workers[i]+':'+work[j]+';');
+				};
+			};
+			if (hosts.length>0) {
+				hosts=hosts.join('\n\t');
+				tpl=tpl.replace(/{HOSTS}/g,hosts);
+				tpl=tpl.replace(/{URI}/g,data.uri);
+				tpl=tpl.replace(/{NS}/g,data.drone);
+				tpl=tpl.replace(/{PORT}/g,80);
+				fs.writeFileSync('/etc/nginx/sites-enabled/'+path.sep+data.drone+'.conf',tpl);
+			} else fs.unlinkSync('/etc/nginx/sites-enabled/'+path.sep+data.drone+'.conf');
+			shelljs.exec("service nginx reload");
+			console.log('done.');
+            cb();
+		} else {
+			console.log('  ! nginx template not found');
+			cb();
+			return;
+		}		
+		
+		
+		
         console.log("Removed "+sid);
         cb();
     } else cb();
@@ -191,6 +232,7 @@ function register_drone(sid,data,cb) {
             cb();
 		} else {
 			console.log('  ! nginx template not found');
+			cb();
 			return;
 		}
   
@@ -232,6 +274,7 @@ var json=fs.readFileSync(__dirname+path.sep+".."+path.sep+"config"+path.sep+"clu
 var Config = JSON.parse(json);
 
 if (Config.threads != "*") {
+    //if (Config.cores * 1 <= numCPUs) 
 	numCPUs = Config.threads * 1;
 };
 
@@ -280,8 +323,6 @@ if (cluster.isMaster) {
     console.log("- thread started.");	
 	var app = express();
     var server = app.listen(0, getIPAddress());
-    
-	//var http = require('http').createServer(app);
 
 	var io = require('socket.io')(server);
 
@@ -327,7 +368,49 @@ if (cluster.isMaster) {
     })
 
     var UPLOAD = multer({ storage: storage })    
-    
+
+	app.post('/sandbox',UPLOAD.single("file"),function(req,res,next) {
+    	if (fs.existsSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+"sid.inf")) SOCKETS=JSON.parse(fs.readFileSync(__dirname+path.sep+".."+path.sep+"var"+path.sep+"registry"+path.sep+"sid.inf","utf-8")); else SOCKETS={};   
+		if (fs.existsSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'sandbox.json')) var SANDBOX=JSON.parse(fs.readFileSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'sandbox.json','utf-8')); else {
+			var tab={
+				sandbox: "xxxx",
+				pids: {},
+				users: {}
+			};
+			fs.writeFileSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'sandbox.json',JSON.stringify(tab,null,4));
+			var SANDBOX=SANDBOX=JSON.parse(fs.readFileSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'sandbox.json','utf-8'));
+		};
+		
+		try {
+			var prefix=SANDBOX.users[SANDBOX.pids[req.body.pid]].prefix;
+			var pidpkg=prefix+'.'+req.body.pkg+'.'+SANDBOX.domain;
+			console.log('pidpkg='+pidpkg)
+			for (var el in SOCKETS) {
+				if (SOCKETS[el].uri==pidpkg) shelljs.exec("kill -9 "+SOCKETS[el].pid);
+			}
+			console.log('http://'+SANDBOX.sandbox+'/sandbox');
+			Request({
+				url: 'http://'+SANDBOX.sandbox+'/sandbox'
+				, formData: {
+					pid: prefix,
+					pkg: req.body.pkg,
+					uri: req.body.uri,
+					file: fs.createReadStream(req.file.path)
+				}
+				, method: "post"
+				, encoding: null
+			}, function (err, resx, body) {
+				shelljs.rm(req.file.path);
+				console.log(body.toString('utf-8'));
+				res.end(body.toString('utf-8'));
+			});
+		} catch(e) {
+			res.end('{"success": false}');
+		}
+		
+		
+	});
+		
 	app.post('/upload',UPLOAD.single("file"),function(req,res,next){
 		// Are you in my access list ?
 		var ips=JSON.parse(fs.readFileSync(__dirname+path.sep+".."+path.sep+"config"+path.sep+"access.json"));
@@ -443,6 +526,36 @@ if (cluster.isMaster) {
 	});
 	app.get('/api',function(req,res) {
 		res.end("Omneedia Cluster API\nversion 1.0.0");
+		return;
+	});
+	app.post('/login',function(req,res) {
+		var fs=require('fs');
+		var path=require('path');
+		var shortid = require('shortid');
+		var result={success: false};
+		if (fs.existsSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'sandbox.json')) var SANDBOX=JSON.parse(fs.readFileSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'sandbox.json','utf-8')); else {
+			var tab={
+				sandbox: "xxxx",
+				pids: {},
+				users: {}
+			};
+			fs.writeFileSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'sandbox.json',JSON.stringify(tab,null,4));
+			var SANDBOX=SANDBOX=JSON.parse(fs.readFileSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'sandbox.json','utf-8'));
+		};
+
+		if (SANDBOX.users[req.body.login]) {
+			if (SANDBOX.users[req.body.login].password==req.body.password) {
+				var sid=shortid.generate();
+				result={success: true, pid: sid };
+				SANDBOX.pids[sid]=req.body.login;
+				fs.writeFileSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'sandbox.json',JSON.stringify(SANDBOX,null,4));
+			} else {
+				result={success: false};
+			}
+		}
+
+		console.log(result);	
+		res.end(JSON.stringify(result));
 		return;
 	});
 	app.delete('/api',function(req,res) {
