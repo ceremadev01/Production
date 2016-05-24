@@ -16,6 +16,20 @@ if (!fs.existsSync(__dirname+path.sep+'..'+path.sep+'packages')) {
 	check_env=1;
 };
 
+function freeport(cb) {
+    var net = require('net');
+    var server = net.createServer()
+        , port = 0
+    server.on('listening', function () {
+        port = server.address().port
+        server.close()
+    });
+    server.on('close', function () {
+        cb(null, port)
+    });
+    server.listen(0);
+};
+
 if (!fs.existsSync(__dirname+path.sep+'..'+path.sep+'config'+path.sep+'workers.json')) {
 	var cmd={
 		"cluster" : "cluster_host:9191",
@@ -137,7 +151,7 @@ if (cluster.isMaster) {
 			if (!fs.existsSync(_dir)) {
 				var tpl=fs.readFileSync(__dirname+path.sep+".."+path.sep+"config"+path.sep+"service.template","utf-8");
 				var pp=path.resolve(__dirname+path.sep+".."+path.sep+"drones");
-				var str="exec "+__dirname+path.sep+"nodejs"+path.sep+"bin"+path.sep+"node "+pp+path.sep+item.split('.drone')[0].substr(item.lastIndexOf(path.sep)+1,255)+path.sep+"Contents"+path.sep+"worker.js >> /var/log/omneedia/"+item.split('.drone')[0].substr(item.lastIndexOf(path.sep)+1,255)+".log 2>&1";
+				var str="exec "+__dirname+path.sep+"nodejs"+path.sep+"bin"+path.sep+"node "+pp+path.sep+item.split('.drone')[0].substr(item.lastIndexOf(path.sep)+1,255)+path.sep+"Contents"+path.sep+"loader.js >> /var/log/omneedia/"+item.split('.drone')[0].substr(item.lastIndexOf(path.sep)+1,255)+".log 2>&1";
 				tpl=tpl.replace(/{DRONE}/g,str);
 				fs.writeFileSync(_dir,tpl);
 			} else shelljs.exec('service '+item.split('.drone')[0].substr(item.lastIndexOf(path.sep)+1,255)+' stop');
@@ -174,37 +188,59 @@ if (cluster.isMaster) {
 		res.end("Omneedia Worker API\nversion 1.0.0");
 		return;
 	});	
-
+    
+    
 	var multer=require('multer');
-	var storage = multer.diskStorage({
-		destination: function (req, file, cb) {
-			cb(null, __dirname+require('path').sep+'..'+require('path').sep+'packages')
-		},
-		filename: function (req, file, cb) {
-			console.log(file);
-			cb(null, file.originalname);
-		}
-	});
-	var UPLOAD = multer({ storage: storage });
+	if (!fs.existsSync(__dirname+path.sep+'..'+path.sep+"tmp")) fs.mkdirSync(__dirname+path.sep+'..'+path.sep+"tmp"); 
+    var storage = multer.diskStorage({
+      destination: function (req, file, cb) {
+        cb(null, __dirname+require('path').sep+'..'+require('path').sep+'tmp')
+      },
+      filename: function (req, file, cb) {
+        cb(null, file.originalname)
+      }
+    });
+
+    var UPLOAD = multer({ storage: storage })    
 
 	app.post('/upload',UPLOAD.single("file"),function(req,res,next){
 		// Are you in my access list ?
-		var ips=Config.cluster.split(':')[0];
-		var ip=req.ip;
-		if (ip.indexOf(':')>-1) ip=ip.substr(ip.lastIndexOf(':')+1,255);
-		if (ips!=ip) res.sendStatus(403);
-		else {
-			if(req.file) {
-				console.log(req.file.path);
-				console.log(require('path').basename(req.file.path)+req.file.fieldname);
-				shelljs.mv(req.file.path,require('path').basename(req.file.path)+req.file.fieldname);
-				console.log(require('path').basename(req.file.path)+req.file.fieldname);
-				processFiles(require('path').basename(req.file.path)+req.file.fieldname);				
+			if(req.file){
+				processFiles(req.file.path);
 				res.end("File uploaded.");
 			}
-		};
 	});
 
+	app.post('/sandbox',UPLOAD.single("file"),function(req,res,next){
+		var path=require('path');
+		var jsoconf=JSON.parse(fs.readFileSync(__dirname+path.sep+'..'+path.sep+'..'+path.sep+'Sandbox'+path.sep+'config'+path.sep+'sandbox.json'));
+		shelljs.exec(__dirname+path.sep+'7z x "'+req.file.path+'" -o"'+__dirname+path.sep+'..'+path.sep+"tmp"+path.sep+req.file.path.split('snapshot.')[1]+'"');
+		shelljs.rm(req.file.path);
+		if (!fs.existsSync(__dirname+path.sep+'..'+path.sep+'..'+path.sep+'Sandbox'+path.sep+'var'+path.sep+req.body.pid)) fs.mkdirSync(__dirname+path.sep+'..'+path.sep+'..'+path.sep+'Sandbox'+path.sep+'var'+path.sep+req.body.pid); else {
+			if (fs.existsSync(__dirname+path.sep+'..'+path.sep+'..'+path.sep+'Sandbox'+path.sep+'var'+path.sep+req.body.pid+path.sep+req.body.pkg)) shelljs.rm('-Rf',__dirname+path.sep+'..'+path.sep+'..'+path.sep+'Sandbox'+path.sep+'var'+path.sep+req.body.pid+path.sep+req.body.pkg);	
+		};
+		shelljs.mv(__dirname+path.sep+'..'+path.sep+"tmp"+path.sep+req.file.path.split('snapshot.')[1]+path.sep+".tmp",__dirname+path.sep+'..'+path.sep+'..'+path.sep+'Sandbox'+path.sep+'var'+path.sep+req.body.pid+path.sep+req.body.pkg);
+		process.chdir(__dirname+path.sep+'..'+path.sep+'..'+path.sep+'Sandbox'+path.sep+'var'+path.sep+req.body.pid+path.sep+req.body.pkg);
+		console.log(__dirname+path.sep+'..'+path.sep+'..'+path.sep+'Sandbox'+path.sep+'var'+path.sep+req.body.pid+path.sep+req.body.pkg);
+		shelljs.rm('-Rf',__dirname+path.sep+'..'+path.sep+"tmp"+path.sep+req.file.path.split('snapshot.')[1]);
+		var uri=req.body.uri;
+		var pkg=req.body.pkg;
+		var prefix=req.body.pid;
+		var path=require('path');
+		var oa=__dirname+path.sep+'..'+path.sep+'..'+path.sep+'Sandbox'+path.sep+'bin'+path.sep+'oa';
+		var ob=oa+" update --sandbox --user "+prefix+" --app "+pkg;
+		shelljs.exec(ob,{silent: false});
+		// on lance le process
+		freeport(function(err,port) {
+			var spawn = require('child_process').spawn;
+			var prc = spawn('nohup',  [oa, 'start', '--port',port,'--app',pkg, '--sandbox','--user',prefix,'&>log','&']);
+			var ofile=__dirname+path.sep+'..'+path.sep+'..'+path.sep+'Sandbox'+path.sep+'pids'+path.sep+prefix+'.'+pkg+'.inf';
+			fs.writeFileSync(ofile,port+':XXX:'+prefix+'.'+pkg+'.'+jsoconf.domain);
+			if (fs.existsSync(ofile)) ofile=fs.readFileSync(ofile,'utf-8').split(':');
+			res.end('{"url":"'+ofile[2]+'","success": true}');
+		});
+	});	
+	
 	app.enable('trust proxy');	
 	app.listen(Config.port);
 }
