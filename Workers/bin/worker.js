@@ -151,7 +151,7 @@ if (cluster.isMaster) {
 			if (!fs.existsSync(_dir)) {
 				var tpl=fs.readFileSync(__dirname+path.sep+".."+path.sep+"config"+path.sep+"service.template","utf-8");
 				var pp=path.resolve(__dirname+path.sep+".."+path.sep+"drones");
-				var str="exec "+__dirname+path.sep+"nodejs"+path.sep+"bin"+path.sep+"node "+pp+path.sep+item.split('.drone')[0].substr(item.lastIndexOf(path.sep)+1,255)+path.sep+"Contents"+path.sep+"loader.js >> /var/log/omneedia/"+item.split('.drone')[0].substr(item.lastIndexOf(path.sep)+1,255)+".log 2>&1";
+				var str="exec "+__dirname+path.sep+"nodejs"+path.sep+"bin"+path.sep+"node "+pp+path.sep+item.split('.drone')[0].substr(item.lastIndexOf(path.sep)+1,255)+path.sep+"Contents"+path.sep+"worker.js >> /var/log/omneedia/"+item.split('.drone')[0].substr(item.lastIndexOf(path.sep)+1,255)+".log 2>&1";
 				tpl=tpl.replace(/{DRONE}/g,str);
 				fs.writeFileSync(_dir,tpl);
 			} else shelljs.exec('service '+item.split('.drone')[0].substr(item.lastIndexOf(path.sep)+1,255)+' stop');
